@@ -310,9 +310,8 @@ function computeLengthDelta(current, committed) {
     const perpDist = Math.abs(px * dy2 - py * dx2) / len2;
     if (perpDist > 0.01) return null;
 
-    // 3) Length must actually differ
+    // 3) Net length difference (informational only; ends are judged separately)
     const lenDiff = len1 - len2;
-    if (Math.abs(lenDiff) < 0.01) return null;
 
     // 4) Measure each END independently along the committed line's axis.
     //    No endpoint has to stay fixed: start-side and end-side changes are
@@ -327,36 +326,41 @@ function computeLengthDelta(current, committed) {
     const sChange = tLo;                   // <0 extended, >0 retracted (committed low side is t=0)
     const eChange = tHi - len2;            // >0 extended, <0 retracted (committed high side is t=len2)
 
-    const anyExt = sChange < -tol || eChange > tol;
-    const anyRet = sChange > tol || eChange < -tol;
-    // Nothing changed, or one end grew while the other shrank (a shift,
-    // not a pure length change) → no indicator.
-    if ((!anyExt && !anyRet) || (anyExt && anyRet)) return null;
-
-    const isLonger = anyExt;
+    // Each end is judged on its own: extended = blue, retracted = purple.
+    // Mixed results (one end grew, the other shrank) are shown as-is.
     const pt = (t) => ({ x: committed.x1 + ux * t, y: committed.y1 + uy * t });
     const segments = [];
     if (Math.abs(sChange) > tol) {
         const p = pt(0), q = pt(sChange);
-        segments.push({ x1: p.x, y1: p.y, x2: q.x, y2: q.y, diff: Math.abs(sChange) });
+        segments.push({
+            x1: p.x, y1: p.y, x2: q.x, y2: q.y,
+            type: sChange < 0 ? 'longer' : 'shorter',
+            diff: Math.abs(sChange)
+        });
     }
     if (Math.abs(eChange) > tol) {
         const p = pt(len2), q = pt(tHi);
-        segments.push({ x1: p.x, y1: p.y, x2: q.x, y2: q.y, diff: Math.abs(eChange) });
+        segments.push({
+            x1: p.x, y1: p.y, x2: q.x, y2: q.y,
+            type: eChange > 0 ? 'longer' : 'shorter',
+            diff: Math.abs(eChange)
+        });
     }
+    if (segments.length === 0) return null;
 
     return {
         segments,
-        type: isLonger ? 'longer' : 'shorter',
+        type: lenDiff >= 0 ? 'longer' : 'shorter',   // net result
         diff: lenDiff
     };
 }
 
 function drawLengthDelta(delta) {
-    const isLonger = delta.type === 'longer';
-    // Blue = longer, Purple = shorter
-    const color = isLonger ? '#3b82f6' : '#a855f7';
-    delta.segments.forEach(seg => drawDeltaSegment(seg, color, isLonger));
+    // Blue = longer, Purple = shorter (decided per segment)
+    delta.segments.forEach(seg => {
+        const isLonger = seg.type === 'longer';
+        drawDeltaSegment(seg, isLonger ? '#3b82f6' : '#a855f7', isLonger);
+    });
 }
 
 function drawDeltaSegment(seg, color, isLonger) {
