@@ -114,10 +114,12 @@ function viewerFitAll() {
         maxY = Math.max(maxY, line.y1, line.y2);
         // Include length-delta extents so the delta indicator stays in view
         if (line.lengthDelta) {
-            minX = Math.min(minX, line.lengthDelta.x1, line.lengthDelta.x2);
-            maxX = Math.max(maxX, line.lengthDelta.x1, line.lengthDelta.x2);
-            minY = Math.min(minY, line.lengthDelta.y1, line.lengthDelta.y2);
-            maxY = Math.max(maxY, line.lengthDelta.y1, line.lengthDelta.y2);
+            line.lengthDelta.segments.forEach(seg => {
+                minX = Math.min(minX, seg.x1, seg.x2);
+                maxX = Math.max(maxX, seg.x1, seg.x2);
+                minY = Math.min(minY, seg.y1, seg.y2);
+                maxY = Math.max(maxY, seg.y1, seg.y2);
+            });
         }
     });
 
@@ -312,48 +314,54 @@ function computeLengthDelta(current, committed) {
     const lenDiff = len1 - len2;
     if (Math.abs(lenDiff) < 0.01) return null;
 
-    // 4) Find the anchor endpoint (one endpoint must be ~fixed)
+    // 4) Measure each END independently along the committed line's axis.
+    //    No endpoint has to stay fixed: start-side and end-side changes are
+    //    each turned into their own segment (so resizing BOTH ends works).
     const tol = 0.02;
-    const ssDist = Math.hypot(current.x1 - committed.x1, current.y1 - committed.y1);
-    const eeDist = Math.hypot(current.x2 - committed.x2, current.y2 - committed.y2);
+    const ux = dx2 / len2, uy = dy2 / len2;
+    const proj = (x, y) => (x - committed.x1) * ux + (y - committed.y1) * uy;
+    const ta = proj(current.x1, current.y1);
+    const tb = proj(current.x2, current.y2);
+    const tLo = Math.min(ta, tb);          // current extent, low side
+    const tHi = Math.max(ta, tb);          // current extent, high side
+    const sChange = tLo;                   // <0 extended, >0 retracted (committed low side is t=0)
+    const eChange = tHi - len2;            // >0 extended, <0 retracted (committed high side is t=len2)
 
-    const isLonger = lenDiff > 0;
-    let delta = null;
+    const anyExt = sChange < -tol || eChange > tol;
+    const anyRet = sChange > tol || eChange < -tol;
+    // Nothing changed, or one end grew while the other shrank (a shift,
+    // not a pure length change) → no indicator.
+    if ((!anyExt && !anyRet) || (anyExt && anyRet)) return null;
 
-    if (ssDist <= tol && ssDist <= eeDist) {
-        // Start anchored → the END moved
-        if (isLonger) {
-            delta = { x1: committed.x2, y1: committed.y2, x2: current.x2, y2: current.y2 };
-        } else {
-            delta = { x1: current.x2, y1: current.y2, x2: committed.x2, y2: committed.y2 };
-        }
-    } else if (eeDist <= tol) {
-        // End anchored → the START moved
-        if (isLonger) {
-            delta = { x1: committed.x1, y1: committed.y1, x2: current.x1, y2: current.y1 };
-        } else {
-            delta = { x1: current.x1, y1: current.y1, x2: committed.x1, y2: committed.y1 };
-        }
-    } else {
-        // Neither endpoint anchored → the line shifted, not a pure length change
-        return null;
+    const isLonger = anyExt;
+    const pt = (t) => ({ x: committed.x1 + ux * t, y: committed.y1 + uy * t });
+    const segments = [];
+    if (Math.abs(sChange) > tol) {
+        const p = pt(0), q = pt(sChange);
+        segments.push({ x1: p.x, y1: p.y, x2: q.x, y2: q.y, diff: Math.abs(sChange) });
+    }
+    if (Math.abs(eChange) > tol) {
+        const p = pt(len2), q = pt(tHi);
+        segments.push({ x1: p.x, y1: p.y, x2: q.x, y2: q.y, diff: Math.abs(eChange) });
     }
 
     return {
-        x1: delta.x1, y1: delta.y1,
-        x2: delta.x2, y2: delta.y2,
+        segments,
         type: isLonger ? 'longer' : 'shorter',
         diff: lenDiff
     };
 }
 
 function drawLengthDelta(delta) {
-    const sp1 = vWorldToScreen(delta.x1, delta.y1);
-    const sp2 = vWorldToScreen(delta.x2, delta.y2);
-
     const isLonger = delta.type === 'longer';
     // Blue = longer, Purple = shorter
     const color = isLonger ? '#3b82f6' : '#a855f7';
+    delta.segments.forEach(seg => drawDeltaSegment(seg, color, isLonger));
+}
+
+function drawDeltaSegment(seg, color, isLonger) {
+    const sp1 = vWorldToScreen(seg.x1, seg.y1);
+    const sp2 = vWorldToScreen(seg.x2, seg.y2);
 
     vCtx.save();
 
@@ -383,10 +391,10 @@ function drawLengthDelta(delta) {
         vCtx.stroke();
     }
 
-    // Floating pill label with +/- length difference
+    // Floating pill label with +/- length difference of this segment
     const midX = (sp1.x + sp2.x) / 2;
     const midY = (sp1.y + sp2.y) / 2;
-    const labelText = (isLonger ? '+' : '-') + Math.abs(delta.diff).toFixed(2);
+    const labelText = (isLonger ? '+' : '-') + Math.abs(seg.diff).toFixed(2);
 
     vCtx.font = 'bold 10px ui-sans-serif, system-ui, sans-serif';
     const tw = vCtx.measureText(labelText).width;
