@@ -92,7 +92,7 @@ function calculateAction() {
     let sY = readCoord('startY_in', 'startY_ro');
     let eX = readCoord('endX_in', 'endX_ro');
     let eY = readCoord('endY_in', 'endY_ro');
-    
+
     let sResize = parseFloat(document.getElementById('len_start_in').value) || 0;
     let eResize = parseFloat(document.getElementById('len_end_in').value) || 0;
 
@@ -115,7 +115,7 @@ function calculateAction() {
 
     let i = 1;
     let uzun, kisa;
-    
+
     if (newStartY > newEndY) {
         uzun = { x: newStartX, y: newStartY };
         kisa = { x: newEndX, y: newEndY };
@@ -135,7 +135,7 @@ function calculateAction() {
 
     let secondLendght = Math.sqrt(Math.pow(x - kisa.x, 2) + Math.pow(y - kisa.y, 2));
     let firstDegree = Math.acos(secondLendght / Math.abs(currentLen)) * (180 / Math.PI) + degreeCalib;
-    
+
     let secondDegree = 0;
     let valid = !isNaN(firstDegree) && isFinite(firstDegree);
 
@@ -152,11 +152,31 @@ function calculateAction() {
         secondDegree = 0;
     }
 
-    document.getElementById('startX_ro').value = outPutFixer(newStartX);
-    document.getElementById('startY_ro').value = outPutFixer(newStartY);
-    document.getElementById('endX_ro').value = outPutFixer(newEndX);
-    document.getElementById('endY_ro').value = outPutFixer(newEndY);
+    // ---- FIX: keep readonly AND input fields in sync after calculation ----
+    // This guarantees that the viewer, save, and export all read the same,
+    // post-calculation coordinates, so the length delta (longer/shorter)
+    // is computed from the correct values.
+    const fixedStartX = outPutFixer(newStartX);
+    const fixedStartY = outPutFixer(newStartY);
+    const fixedEndX = outPutFixer(newEndX);
+    const fixedEndY = outPutFixer(newEndY);
+
+    document.getElementById('startX_ro').value = fixedStartX;
+    document.getElementById('startY_ro').value = fixedStartY;
+    document.getElementById('endX_ro').value = fixedEndX;
+    document.getElementById('endY_ro').value = fixedEndY;
+
+    document.getElementById('startX_in').value = fixedStartX;
+    document.getElementById('startY_in').value = fixedStartY;
+    document.getElementById('endX_in').value = fixedEndX;
+    document.getElementById('endY_in').value = fixedEndY;
+
     document.getElementById('len_ro').value = outPutFixer(currentLen);
+
+    // Consume the one-shot resize inputs so a second CALCULATE press
+    // does not re-apply the same resize amount.
+    document.getElementById('len_start_in').value = '';
+    document.getElementById('len_end_in').value = '';
 
     let v2i = firstDegree < 0 ? 1 : -1;
     let v2i_rev = secondDegree < 0 ? 1 : -1;
