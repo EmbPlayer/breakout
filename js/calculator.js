@@ -152,14 +152,12 @@ function calculateAction() {
         secondDegree = 0;
     }
 
-    // ---- FIX: keep readonly AND input fields in sync after calculation ----
-    // This guarantees that the viewer, save, and export all read the same,
-    // post-calculation coordinates, so the length delta (longer/shorter)
-    // is computed from the correct values.
+    // ---- write results to readonly + input fields (sync DOM) ----
     const fixedStartX = outPutFixer(newStartX);
     const fixedStartY = outPutFixer(newStartY);
     const fixedEndX = outPutFixer(newEndX);
     const fixedEndY = outPutFixer(newEndY);
+    const fixedLen = outPutFixer(currentLen);
 
     document.getElementById('startX_ro').value = fixedStartX;
     document.getElementById('startY_ro').value = fixedStartY;
@@ -171,21 +169,60 @@ function calculateAction() {
     document.getElementById('endX_in').value = fixedEndX;
     document.getElementById('endY_in').value = fixedEndY;
 
-    document.getElementById('len_ro').value = outPutFixer(currentLen);
+    document.getElementById('len_ro').value = fixedLen;
 
-    // Consume the one-shot resize inputs so a second CALCULATE press
-    // does not re-apply the same resize amount.
+    // consume one-shot resize inputs
     document.getElementById('len_start_in').value = '';
     document.getElementById('len_end_in').value = '';
 
     let v2i = firstDegree < 0 ? 1 : -1;
     let v2i_rev = secondDegree < 0 ? 1 : -1;
 
-    document.getElementById('deg_1').value = valid ? outPutFixer(firstDegree) + "°" : "0°";
-    document.getElementById('deg_2').value = valid ? outPutFixer(firstDegree + 360 * v2i) + "°" : "0°";
-    document.getElementById('deg_3').value = valid ? outPutFixer(secondDegree) + "°" : "0°";
-    document.getElementById('deg_4').value = valid ? outPutFixer(secondDegree + 360 * v2i_rev) + "°" : "0°";
+    const deg1 = valid ? outPutFixer(firstDegree) + "°" : "0°";
+    const deg2 = valid ? outPutFixer(firstDegree + 360 * v2i) + "°" : "0°";
+    const deg3 = valid ? outPutFixer(secondDegree) + "°" : "0°";
+    const deg4 = valid ? outPutFixer(secondDegree + 360 * v2i_rev) + "°" : "0°";
+
+    document.getElementById('deg_1').value = deg1;
+    document.getElementById('deg_2').value = deg2;
+    document.getElementById('deg_3').value = deg3;
+    document.getElementById('deg_4').value = deg4;
 
     updateDegreeView();
     updateDialPointers();
+
+    // ---- FIX: sync the LIVE appData entry so the viewer's
+    // "longer/shorter vs. last save" delta reflects this calculation.
+    // committedData is intentionally NOT touched — it stays as the
+    // baseline until the user presses SAVE.
+    if (currentState && currentState.model && currentState.configType && currentState.configValue) {
+        const modelEntry = appData[currentState.model];
+        if (modelEntry) {
+            const collection = modelEntry[`${currentState.configType}s`];
+            if (collection && collection[currentState.configValue]) {
+                const target = collection[currentState.configValue];
+
+                if (typeof getFormData === 'function') {
+                    const fd = getFormData();
+                    if (fd && typeof fd === 'object') {
+                        Object.assign(target, fd);
+                    }
+                } else {
+                    Object.assign(target, {
+                        startX_ro: fixedStartX,
+                        startY_ro: fixedStartY,
+                        endX_ro: fixedEndX,
+                        endY_ro: fixedEndY,
+                        len_ro: fixedLen,
+                        deg_1: deg1,
+                        deg_2: deg2,
+                        deg_3: deg3,
+                        deg_4: deg4
+                    });
+                }
+
+                persistToLocal();
+            }
+        }
+    }
 }
